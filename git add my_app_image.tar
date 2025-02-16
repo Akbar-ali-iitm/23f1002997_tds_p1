@@ -1,0 +1,1 @@
+echo "This is a dummy Docker image file" > my_app_image.tar
