@@ -117,125 +117,113 @@ def A7(filename='/data/email.txt', output_file='/data/email-sender.txt'):
     with open(output_file, 'w') as file:
         file.write(sender_email)
 
-import base64
 def png_to_base64(image_path):
+    """Convert a PNG image to a Base64-encoded string."""
     with open(image_path, "rb") as image_file:
-        base64_string = base64.b64encode(image_file.read()).decode('utf-8')
-    return base64_string
-# def A8():
-#     input_image = "data/credit_card.png"
-#     output_file = "data/credit-card.txt"
+        return base64.b64encode(image_file.read()).decode("utf-8")
 
-#     # Step 1: Extract text using OCR
-#     try:
-#         image = Image.open(input_image)
-#         extracted_text = pytesseract.image_to_string(image)
-#         print(f"Extracted text:\n{extracted_text}")
-#     except Exception as e:
-#         print(f"❌ Error reading or processing {input_image}: {e}")
-#         return
+def A8(filename="/data/credit_card.txt", image_path="/data/credit_card.png"):
+    """Extract a credit card number from an image and save it to a file."""
+    try:
+        # Step 1: Extract text using OCR
+        image = Image.open(image_path)
+        extracted_text = pytesseract.image_to_string(image, config="--psm 6")
+        print(f"Extracted Text:\n{extracted_text}")
 
-#     # Step 2: Pass the extracted text to the LLM to validate and extract card number
-#     prompt = f"""Extract the credit card number from the following text. Respond with only the card number, without spaces:
+        # Step 2: Ask LLM to extract only the credit card number
+        body = {
+            "model": "gpt-4o-mini",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "Extract the 16-digit credit card number from this image. Return only the number, without spaces or any other text."},
+                        {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{png_to_base64(image_path)}"}}
+                    ]
+                }
+            ]
+        }
 
-#     {extracted_text}
-#     """
-#     try:
-#         card_number = ask_llm(prompt).strip()
-#         print(f"Card number extracted by LLM: {card_number}")
-#     except Exception as e:
-#         print(f"❌ Error processing with LLM: {e}")
-#         return
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {AIPROXY_TOKEN}"
+        }
 
-#     # Step 3: Save the extracted card number to a text file
-#     try:
-#         with open(output_file, "w", encoding="utf-8") as file:
-#             file.write(card_number + "\n")
-#         print(f"✅ Credit card number saved to: {output_file}")
-#     except Exception as e:
-#         print(f"❌ Error writing {output_file}: {e}")
+        response = requests.post(
+            "http://aiproxy.sanand.workers.dev/openai/v1/chat/completions",
+            headers=headers,
+            data=json.dumps(body),
+        )
+        response.raise_for_status()  # Raise error if the request fails
+        result = response.json()
 
-def A8(filename='/data/credit_card.txt', image_path='/data/credit_card.png'):
-    # Construct the request body for the AIProxy call
-    body = {
-        "model": "gpt-4o-mini",
-        "messages": [
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": "There is 8 or more digit number is there in this image, with space after every 4 digit, only extract the those digit number without spaces and return just the number without any other characters"
-                    },
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/png;base64,{png_to_base64(image_path)}"
-                        }
-                    }
-                ]
-            }
-        ]
-    }
+        # Step 3: Extract card number from LLM response
+        card_number = result["choices"][0]["message"]["content"].strip().replace(" ", "")
+        print(f"Extracted Card Number: {card_number}")
 
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {AIPROXY_TOKEN}"
-    }
+        # Step 4: Save to file
+        with open(filename, "w") as file:
+            file.write(card_number + "\n")
+        print(f"✅ Credit card number saved to: {filename}")
 
-    # Make the request to the AIProxy service
-    response = requests.post("http://aiproxy.sanand.workers.dev/openai/v1/chat/completions",
-                             headers=headers, data=json.dumps(body))
-    # response.raise_for_status()
-
-    # Extract the credit card number from the response
-    result = response.json()
-    # print(result); return None
-    card_number = result['choices'][0]['message']['content'].replace(" ", "")
-
-    # Write the extracted card number to the output file
-    with open(filename, 'w') as file:
-        file.write(card_number)
-# A8()
-
-
+    except Exception as e:
+        print(f"❌ Error in A8: {e}")
 
 def get_embedding(text):
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {AIPROXY_TOKEN}"
-    }
-    data = {
-        "model": "text-embedding-3-small",
-        "input": [text]
-    }
-    response = requests.post("http://aiproxy.sanand.workers.dev/openai/v1/embeddings", headers=headers, data=json.dumps(data))
-    response.raise_for_status()
-    return response.json()["data"][0]["embedding"]
+    """Fetch the embedding for a given text using OpenAI's API."""
+    try:
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {AIPROXY_TOKEN}"
+        }
+        data = {"model": "text-embedding-3-small", "input": [text]}
 
-def A9(filename='/data/comments.txt', output_filename='/data/comments-similar.txt'):
-    # Read comments
-    with open(filename, 'r') as f:
-        comments = [line.strip() for line in f.readlines()]
+        response = requests.post(
+            "http://aiproxy.sanand.workers.dev/openai/v1/embeddings",
+            headers=headers,
+            data=json.dumps(data),
+        )
+        response.raise_for_status()  # Raise error if API call fails
+        return response.json()["data"][0]["embedding"]
 
-    # Get embeddings for all comments
-    embeddings = [get_embedding(comment) for comment in comments]
+    except Exception as e:
+        print(f"❌ Error fetching embedding: {e}")
+        return None
 
-    # Find the most similar pair
-    min_distance = float('inf')
-    most_similar = (None, None)
+def A9(filename="/data/comments.txt", output_filename="/data/comments-similar.txt"):
+    """Find the most similar pair of comments using embeddings."""
+    try:
+        # Read comments
+        with open(filename, "r") as f:
+            comments = [line.strip() for line in f.readlines()]
 
-    for i in range(len(comments)):
-        for j in range(i + 1, len(comments)):
-            distance = cosine(embeddings[i], embeddings[j])
-            if distance < min_distance:
-                min_distance = distance
-                most_similar = (comments[i], comments[j])
+        # Get embeddings
+        embeddings = [get_embedding(comment) for comment in comments]
 
-    # Write the most similar pair to file
-    with open(output_filename, 'w') as f:
-        f.write(most_similar[0] + '\n')
-        f.write(most_similar[1] + '\n')
+        # Ensure embeddings are valid
+        if any(e is None for e in embeddings):
+            print("❌ Error: Some embeddings could not be generated.")
+            return
+
+        # Find the most similar pair
+        min_distance = float("inf")
+        most_similar = ("", "")
+
+        for i in range(len(comments)):
+            for j in range(i + 1, len(comments)):
+                distance = cosine(embeddings[i], embeddings[j])
+                if distance < min_distance:
+                    min_distance = distance
+                    most_similar = (comments[i], comments[j])
+
+        # Write the most similar pair to file
+        with open(output_filename, "w") as f:
+            f.write(most_similar[0] + "\n")
+            f.write(most_similar[1] + "\n")
+        print(f"✅ Most similar comments saved to: {output_filename}")
+
+    except Exception as e:
+        print(f"❌ Error in A9: {e}")
 
 def A10(filename='/data/ticket-sales.db', output_filename='/data/ticket-sales-gold.txt', query="SELECT SUM(units * price) FROM tickets WHERE type = 'Gold'"):
     # Connect to the SQLite database
